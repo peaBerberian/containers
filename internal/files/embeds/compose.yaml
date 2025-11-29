@@ -1,5 +1,5 @@
-# compose.yaml file
-# =================
+# compose.yaml - Version: 1.0.0
+# =============================
 #
 # If you plan to just set-up a single container for a single project,
 # you can just create a .env file locally setting the env variables needed by
@@ -14,14 +14,10 @@
 # ```sh
 # docker volume create paulenv-shared-cache 2>/dev/null || true
 # ``
-# And after a `build`, to initialize persisted volumes:
-# ```sh
-# `docker compose --profile reset up reset-cache reset-local`
-# ```
 #
-# If you don't mind running the `paul-envs.sh` script, none of this is
-# necessary, the `paul-envs.sh` script extends this compose.yaml file into other
-# more refined compose files and auto-fills the right parameters.
+# If you don't mind running the `paul-envs` binary, none of this is necessary,
+# the `paul-envs` tool extends this compose.yaml file into other more refined
+# compose files and auto-fills the right parameters.
 
 services:
 
@@ -130,6 +126,11 @@ services:
         # Will be mounted in `$HOME/projects/<PROJECT_DIRNAME>` inside that container.
         PROJECT_PATH: ${PROJECT_PATH}
 
+        # Path of where the dotfiles to mount inside the container are located.
+        # Defaults to a "placeholder" directory that **must** exist in the same
+        # directory than the Dockerfile.
+        DOTFILES_DIR: ${DOTFILES_DIR:-./placeholder}
+
     # Persistent volumes mounted. Those three are necessary, but you can add
     # supplementary ones with different access rules if you want.
     volumes:
@@ -155,48 +156,6 @@ services:
       # public key like so:
       # - ~/.ssh/PATH_TO_YOUR_KEY.pub:/etc/ssh/authorized_keys/${USERNAME}:ro
     working_dir: /home/${USERNAME:-dev}/projects/${PROJECT_DIRNAME}
-
-  # Reset cache directory to its state at build-time.
-  # The "cache directory" corresponds to cached data such as the one for
-  # installed npm/yarn packages.
-  # It can be shared through multiple containers simultaneously relatively safely.
-  reset-cache:
-    image: paulenv:${PROJECT_ID:-latest}
-    pull_policy: never
-    user: root
-    command: >
-      mkdir -p /mnt/cache &&
-             sh -c "cp -a /home/${USERNAME}/.container-cache/. /mnt/cache/ &&
-             chown -R ${HOST_UID}:${HOST_GID} /mnt/cache"
-    volumes:
-      - shared-cache:/mnt/cache
-    environment:
-      - USERNAME=${USERNAME:-dev}
-      - HOST_UID=${HOST_UID:-1000}
-      - HOST_GID=${HOST_GID:-1000}
-    profiles: ["reset"]
-
-  # Reset local directory to its state at build-time.
-  # The "local directory" corresponds roughly to the `XDG_DATA_HOME` and
-  # `XDG_STATE_HOME` directories (e.g. shell history, neovim plugins, tool data
-  # and database etc.)
-  # This volume is more concurrency-sensible and is thus mounted as separate
-  # distinct volumes on multiple simultaneous containers (one per project).
-  reset-local:
-    image: paulenv:${PROJECT_ID:-latest}
-    pull_policy: never
-    user: root
-    command: >
-      mkdir -p /mnt/local &&
-             sh -c "cp -a /home/${USERNAME}/.container-local/. /mnt/local/ &&
-             chown -R ${HOST_UID}:${HOST_GID} /mnt/local"
-    volumes:
-      - local-state:/mnt/local
-    environment:
-      - USERNAME=${USERNAME:-dev}
-      - HOST_UID=${HOST_UID:-1000}
-      - HOST_GID=${HOST_GID:-1000}
-    profiles: ["reset"]
 
 volumes:
   shared-cache:

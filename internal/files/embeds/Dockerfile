@@ -1,5 +1,5 @@
-# Dockerfile
-# ==========
+# Dockerfile - Version: 1.0.0
+# ===========================
 #
 # This "Dockerfile" sets a basic Ubuntu LTS environment with a shell, the wanted
 # node.js version and some CLI tools installed and configured depending on your
@@ -15,6 +15,8 @@
 # doesn't persist them by itself (this is performed by the `compose.yaml` file).
 
 FROM ubuntu:24.04 AS ubuntu-base
+
+LABEL paulenv=true
 
 # Configurable user settings
 ARG HOST_UID=1000
@@ -45,6 +47,7 @@ RUN if id -u ubuntu >/dev/null 2>&1; then userdel -r ubuntu; fi && \
 
 USER ${USERNAME}
 
+ENV USERNAME=${USERNAME}
 ENV SHELL=/usr/bin/${USER_SHELL}
 
 # Set-up persisted directories
@@ -92,6 +95,7 @@ ARG ENABLE_WASM=false
 ARG ENABLE_SUDO=false
 ARG GIT_AUTHOR_NAME=""
 ARG GIT_AUTHOR_EMAIL=""
+ARG DOTFILES_DIR="./placeholder"
 
 USER root
 
@@ -352,7 +356,7 @@ RUN if [ -n "$INSTALL_NODE" ] && [ "$INSTALL_NODE" != "none" ]; then \
 RUN git config --global merge.conflictstyle zdiff3
 
 # Copy config files (may overwrite shell configs with tool init lines)
-RUN --mount=type=bind,source=configs,target=/tmp/configs \
+RUN --mount=type=bind,source=${DOTFILES_DIR},target=/tmp/configs \
   if [ -d /tmp/configs ] && [ "$(ls -A /tmp/configs 2>/dev/null)" ]; then \
     cp -r /tmp/configs/. /home/${USERNAME}/; \
   fi
@@ -423,20 +427,19 @@ RUN if [ "$ENABLE_SSH" = "true" ]; then \
     chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.ssh; \
   fi
 
-# Create entrypoint script that conditionally starts SSH
-RUN echo '#!/usr/bin/env bash' > /usr/local/bin/docker-entrypoint.sh && \
-    echo 'if [[ -d /var/run/sshd ]] && ! pgrep -x sshd >/dev/null; then' >> /usr/local/bin/docker-entrypoint.sh && \
-    echo '    /usr/sbin/sshd -D &' >> /usr/local/bin/docker-entrypoint.sh && \
-    echo '    if [[ -t 0 ]] && [[ $# -eq 0 ]]; then' >> /usr/local/bin/docker-entrypoint.sh && \
-    echo '        IP=$(hostname -I | awk "{print \$1}")' >> /usr/local/bin/docker-entrypoint.sh && \
-    echo '        echo "NOTE: Listening for ssh connections at '"${USERNAME}"'@${IP}:22"' >> /usr/local/bin/docker-entrypoint.sh && \
-    echo '    fi' >> /usr/local/bin/docker-entrypoint.sh && \
-    echo 'fi' >> /usr/local/bin/docker-entrypoint.sh && \
-    echo 'if [[ $# -eq 0 ]]; then' >> /usr/local/bin/docker-entrypoint.sh && \
-    echo '    exec su '"${USERNAME}"' -s /usr/bin/'"${USER_SHELL}" >> /usr/local/bin/docker-entrypoint.sh && \
-    echo 'else' >> /usr/local/bin/docker-entrypoint.sh && \
-    echo '    exec runuser -u '"${USERNAME}"' -- "$@"' >> /usr/local/bin/docker-entrypoint.sh && \
-    echo 'fi' >> /usr/local/bin/docker-entrypoint.sh && \
-    chmod +x /usr/local/bin/docker-entrypoint.sh
+# Copy initial cache to another known place so it's not replaced by our volume
+RUN cp -a /home/${USERNAME}/.container-cache/. /home/${USERNAME}/.initial-cache/
+RUN cp -a /home/${USERNAME}/.container-local/. /home/${USERNAME}/.initial-local/
 
+# ENV needed by the entrypoint
+ENV INITIAL_CACHE_DIR=/home/${USERNAME}/.initial-cache
+ENV INITIAL_LOCAL_DIR=/home/${USERNAME}/.initial-local
+ENV DOCKER_USERNAME=${USERNAME}
+ENV USER_SHELL=${SHELL}
+ENV DOCKER_CACHE_DIR=/home/${USERNAME}/.container-cache/
+ENV DOCKER_LOCAL_DIR=/home/${USERNAME}/.container-local/
+
+# Add entrypoint script (conditionally starts SSH, init cache etc.)
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
