@@ -40,16 +40,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y docker-ce docker-ce-cli containerd.io
 
-      - name: Set up Docker (macOS)
+
+      - name: Set up Podman as Docker (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install docker docker-compose colima qemu
-          # Start Colima with QEMU driver (more stable on GitHub runners)
-          colima start --cpu 2 --memory 4 --vm-type=qemu
-    
-          # Verify Docker is working
+          # Install Podman and Docker Compose
+          brew install podman docker-compose
+          
+          # Initialize and start Podman machine
+          podman machine init --cpus 2 --memory 4096 --disk-size 20
+          podman machine start
+          
+          # Make 'docker' command use podman
+          sudo ln -sf $(which podman) /usr/local/bin/docker
+          
+          # Set up Docker socket for compose
+          export DOCKER_HOST="unix://$HOME/.local/share/containers/podman/machine/podman.sock"
+          echo "DOCKER_HOST=unix://$HOME/.local/share/containers/podman/machine/podman.sock" >> $GITHUB_ENV
+          
+          # Verify
           docker --version
           docker ps
+          docker compose version
 
       - name: Set up Docker (Windows)
         if: runner.os == 'Windows'
