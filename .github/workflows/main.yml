@@ -43,8 +43,13 @@ jobs:
       - name: Set up Docker (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install docker docker-compose
-          # Note: Docker Desktop might need manual setup on macOS runners
+          brew install docker docker-compose colima qemu
+          # Start Colima with QEMU driver (more stable on GitHub runners)
+          colima start --cpu 2 --memory 4 --vm-type=qemu
+    
+          # Verify Docker is working
+          docker --version
+          docker ps
 
       - name: Set up Docker (Windows)
         if: runner.os == 'Windows'
